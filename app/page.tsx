@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { Plus, Search } from "lucide-react";
 import { FormEvent, MouseEvent, useMemo, useState } from "react";
 
 type Campaign = {
@@ -196,7 +197,7 @@ export default function Home() {
               className="brand-logo"
               src="/LOGO.png"
               alt="Anicca"
-              width={118}
+              width={100}
               height={36}
               priority
             />
@@ -321,11 +322,11 @@ export default function Home() {
 
       <nav className="bottom-nav">
         <button className="nav-item" onClick={scrollToProjects}>
-          <div className="nav-icon">🔍</div>
+          <Search className="nav-icon" aria-hidden="true" />
           <div className="nav-label">Explorar</div>
         </button>
         <button className="nav-item" onClick={() => setIsCreatorModalOpen(true)}>
-          <div className="nav-icon">➕</div>
+          <Plus className="nav-icon" aria-hidden="true" />
           <div className="nav-label">Crear Proyecto</div>
         </button>
       </nav>
