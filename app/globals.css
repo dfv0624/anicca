@@ -65,21 +65,14 @@ button {
 .brand-mark {
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.2px;
+  min-height: 36px;
 }
 
-.brand-symbol {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--orange);
-  color: var(--white);
-  font-size: 15px;
+.brand-logo {
+  display: block;
+  width: auto;
+  height: 36px;
+  object-fit: contain;
 }
 
 .top-action {

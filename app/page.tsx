@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { FormEvent, MouseEvent, useMemo, useState } from "react";
 
 type Campaign = {
@@ -191,8 +192,14 @@ export default function Home() {
       <div className="app-shell">
         <header className="top-bar">
           <div className="brand-mark">
-            <div className="brand-symbol">A</div>
-            <span>Anicca</span>
+            <Image
+              className="brand-logo"
+              src="/LOGO.png"
+              alt="Anicca"
+              width={118}
+              height={36}
+              priority
+            />
           </div>
           <button className="top-action" onClick={() => setIsCreatorModalOpen(true)}>
             Crear

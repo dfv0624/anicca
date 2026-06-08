@@ -11,6 +11,9 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: "Anicca",
   description: "MiniPay para creadores, proyectos y contribuciones directas.",
+  icons: {
+    icon: "/favicon.png",
+  },
 };
 
 export default function RootLayout({
