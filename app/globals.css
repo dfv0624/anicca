@@ -532,6 +532,13 @@ button {
   font-weight: 600;
 }
 
+.status-message {
+  margin: 0 0 14px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .create-btn {
   width: 100%;
   margin-top: 16px;
@@ -542,6 +549,11 @@ button {
   color: var(--white);
   font-size: 14px;
   font-weight: 700;
+}
+
+.create-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .money-stats {
@@ -648,6 +660,32 @@ button {
   box-shadow: 0 10px 24px rgba(247, 115, 43, 0.22);
 }
 
+.token-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: var(--card-hover);
+}
+
+.token-option {
+  min-height: 38px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.token-option.active {
+  background: var(--orange);
+  color: var(--white);
+}
+
 .custom-amount-box {
   display: flex;
   align-items: center;
@@ -697,6 +735,11 @@ button {
   color: var(--orange);
 }
 
+.selected-amount-note span {
+  display: block;
+  margin-top: 5px;
+}
+
 .full-pay-btn {
   width: 100%;
   padding: 15px;
@@ -706,6 +749,11 @@ button {
   color: var(--white);
   font-size: 14px;
   font-weight: 800;
+}
+
+.full-pay-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 @media (max-width: 380px) {

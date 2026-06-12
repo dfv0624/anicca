@@ -2,7 +2,22 @@
 
 import Image from "next/image";
 import { Plus, Search } from "lucide-react";
-import { FormEvent, MouseEvent, useMemo, useState } from "react";
+import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
+import {
+  BrowserProvider,
+  Contract,
+  isAddress,
+  keccak256,
+  parseEther,
+  parseUnits,
+  toUtf8Bytes,
+} from "ethers";
+import {
+  aniccaContributionsAbi,
+  celoContracts,
+  erc20ApprovalAbi,
+} from "@/lib/celo/contracts";
+import { supabase } from "@/lib/supabase/client";
 
 type Campaign = {
   id: string;
@@ -27,37 +42,31 @@ type CreatorForm = {
   wallet: string;
 };
 
-const defaultCampaigns: Campaign[] = [
-  {
-    id: "aniccasoft",
-    name: "Daniel",
-    title: "Construyendo AniccaSoft",
-    role: "Construyendo AniccaSoft",
-    emoji: "👨‍💻",
-    description:
-      "Herramientas de software enfocadas en productividad y transformación humana.",
-    story:
-      "Estoy construyendo AniccaSoft, una plataforma enfocada en productividad, desarrollo personal y transformación humana. Mi objetivo es crear herramientas digitales que ayuden a las personas a convertir sus ideas en proyectos reales.",
-    amount: "$248.50",
-    contributions: 125,
-    video: "https://www.youtube.com/embed/dQw4w9WgXcQ",
-    wallet: "",
-  },
-  {
-    id: "laura-podcast",
-    name: "Laura",
-    title: "Podcast Emprendedor",
-    role: "Podcast Emprendedor",
-    emoji: "🎙️",
-    description: "Conversaciones semanales con emprendedores latinoamericanos.",
-    story:
-      "Laura está creando un podcast semanal para visibilizar historias reales de emprendimiento en Latinoamérica. La campaña busca financiar edición de audio, investigación, producción y mejores herramientas para publicar episodios con mayor calidad.",
-    amount: "$96.00",
-    contributions: 87,
-    video: "https://www.youtube.com/embed/dQw4w9WgXcQ",
-    wallet: "",
-  },
-];
+type CampaignRow = {
+  id: string;
+  name: string;
+  title: string;
+  role: string;
+  emoji: string;
+  description: string;
+  story: string;
+  amount_cents: number;
+  contribution_count: number;
+  video_url: string | null;
+  wallet_address: string;
+};
+
+type ContributionToken = "CELO" | "COPM";
+
+type EthereumProvider = {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+};
+
+declare global {
+  interface Window {
+    ethereum?: EthereumProvider;
+  }
+}
 
 const defaultForm: CreatorForm = {
   name: "",
@@ -69,6 +78,15 @@ const defaultForm: CreatorForm = {
 };
 
 const contributionOptions = [0.1, 0.5, 1, 2];
+const copmDecimals = 18;
+const platformFeeRate = 0.03;
+const contractAddress = process.env.NEXT_PUBLIC_ANICCA_CONTRIBUTIONS_ADDRESS;
+const copmTokenAddress = process.env.NEXT_PUBLIC_COPM_TOKEN_ADDRESS;
+const celoChainId = Number(process.env.NEXT_PUBLIC_CELO_CHAIN_ID || 11142220);
+const celoNetwork =
+  celoChainId === celoContracts.mainnet.chainId
+    ? celoContracts.mainnet
+    : celoContracts.sepolia;
 
 function formatAmount(value: number) {
   const number = Number(value) || 0;
@@ -77,6 +95,10 @@ function formatAmount(value: number) {
     minimumFractionDigits: number % 1 === 0 ? 0 : 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+function formatCents(cents: number) {
+  return formatAmount(cents / 100);
 }
 
 function getYouTubeEmbedUrl(url: string) {
@@ -103,20 +125,91 @@ function getYouTubeEmbedUrl(url: string) {
   return "https://www.youtube.com/embed/dQw4w9WgXcQ";
 }
 
+function mapCampaignRow(row: CampaignRow): Campaign {
+  return {
+    id: row.id,
+    name: row.name,
+    title: row.title,
+    role: row.role,
+    emoji: row.emoji,
+    description: row.description,
+    story: row.story,
+    amount: formatCents(row.amount_cents),
+    contributions: row.contribution_count,
+    video: getYouTubeEmbedUrl(row.video_url ?? ""),
+    wallet: row.wallet_address,
+  };
+}
+
 export default function Home() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>(defaultCampaigns);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isCreatorModalOpen, setIsCreatorModalOpen] = useState(false);
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [selectedAmount, setSelectedAmount] = useState(0.1);
   const [form, setForm] = useState<CreatorForm>(defaultForm);
   const [formError, setFormError] = useState("");
+  const [campaignsError, setCampaignsError] = useState("");
+  const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(true);
+  const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
+  const [selectedToken, setSelectedToken] = useState<ContributionToken>("CELO");
+  const [paymentError, setPaymentError] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState("");
+  const [isPaying, setIsPaying] = useState(false);
 
   const activeCampaign = useMemo(
     () => campaigns.find((campaign) => campaign.id === activeCampaignId),
     [campaigns, activeCampaignId],
   );
 
-  const selectedAmountText = formatAmount(selectedAmount);
+  const totalContributions = useMemo(
+    () =>
+      campaigns.reduce(
+        (total, campaign) => total + campaign.contributions,
+        0,
+      ),
+    [campaigns],
+  );
+
+  const selectedContributionText = `${selectedAmount} ${selectedToken === "CELO" ? "CELO" : "COPm"}`;
+  const selectedSplit = getContributionSplit(selectedAmount);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadCampaigns() {
+      setIsLoadingCampaigns(true);
+      setCampaignsError("");
+
+      const { data, error } = await supabase
+        .from("campaigns")
+        .select(
+          "id,name,title,role,emoji,description,story,amount_cents,contribution_count,video_url,wallet_address",
+        )
+        .order("created_at", { ascending: false });
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (error) {
+        setCampaignsError(
+          "No se pudieron cargar los proyectos desde Supabase. Revisa la tabla campaigns y sus políticas.",
+        );
+        setCampaigns([]);
+        setIsLoadingCampaigns(false);
+        return;
+      }
+
+      setCampaigns(data.map(mapCampaignRow));
+      setIsLoadingCampaigns(false);
+    }
+
+    loadCampaigns();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   function scrollToProjects() {
     document.getElementById("projects")?.scrollIntoView({ behavior: "smooth" });
@@ -124,6 +217,9 @@ export default function Home() {
 
   function resetAmountSelector() {
     setSelectedAmount(0.1);
+    setSelectedToken("CELO");
+    setPaymentError("");
+    setPaymentStatus("");
   }
 
   function openCampaign(
@@ -153,34 +249,247 @@ export default function Home() {
     setFormError("");
   }
 
-  function createCreator(event: FormEvent<HTMLFormElement>) {
+  function getWalletErrorCode(error: unknown) {
+    return typeof error === "object" && error !== null && "code" in error
+      ? Number((error as { code: unknown }).code)
+      : null;
+  }
+
+  async function ensureCeloNetwork(provider: EthereumProvider) {
+    const expectedChainId = `0x${celoChainId.toString(16)}`;
+    const currentChainId = await provider.request({ method: "eth_chainId" });
+
+    if (currentChainId === expectedChainId) {
+      return;
+    }
+
+    try {
+      await provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: expectedChainId }],
+      });
+    } catch (error) {
+      if (getWalletErrorCode(error) !== 4902) {
+        throw error;
+      }
+
+      await provider.request({
+        method: "wallet_addEthereumChain",
+        params: [
+          {
+            chainId: expectedChainId,
+            chainName:
+              celoChainId === celoContracts.mainnet.chainId
+                ? "Celo Mainnet"
+                : "Celo Sepolia",
+            nativeCurrency: {
+              name: "CELO",
+              symbol: "CELO",
+              decimals: 18,
+            },
+            rpcUrls: [celoNetwork.rpcUrl],
+            blockExplorerUrls: [
+              celoChainId === celoContracts.mainnet.chainId
+                ? "https://celoscan.io"
+                : "https://celo-sepolia.blockscout.com",
+            ],
+          },
+        ],
+      });
+    }
+  }
+
+  function getCampaignHash(campaignId: string) {
+    return keccak256(toUtf8Bytes(campaignId));
+  }
+
+  async function persistContribution(params: {
+    campaignId: string;
+    contributorWallet: string;
+    recipientWallet: string;
+    token: ContributionToken;
+    amount: string;
+    creatorAmount: string;
+    platformFee: string;
+    txHash: string;
+  }) {
+    await supabase.from("contributions").insert({
+      campaign_id: params.campaignId,
+      contributor_wallet: params.contributorWallet,
+      recipient_wallet: params.recipientWallet,
+      token_symbol: params.token,
+      amount_units: params.amount,
+      creator_amount_units: params.creatorAmount,
+      platform_fee_units: params.platformFee,
+      tx_hash: params.txHash,
+      chain_id: celoChainId,
+      status: "confirmed",
+    });
+  }
+
+  function getContributionSplit(amount: number) {
+    const platformFee = Number((amount * platformFeeRate).toFixed(8));
+    const creatorAmount = Number((amount - platformFee).toFixed(8));
+
+    return {
+      creatorAmount: String(creatorAmount),
+      platformFee: String(platformFee),
+    };
+  }
+
+  async function contribute() {
+    if (!activeCampaign) {
+      return;
+    }
+
+    setPaymentError("");
+    setPaymentStatus("");
+
+    if (!window.ethereum) {
+      setPaymentError("No se detectó una wallet compatible");
+      return;
+    }
+
+    if (!contractAddress || !isAddress(contractAddress)) {
+      setPaymentError("Falta configurar NEXT_PUBLIC_ANICCA_CONTRIBUTIONS_ADDRESS");
+      return;
+    }
+
+    if (!activeCampaign.wallet || !isAddress(activeCampaign.wallet)) {
+      setPaymentError("La wallet del proyecto no es una dirección válida");
+      return;
+    }
+
+    if (selectedToken === "COPM" && (!copmTokenAddress || !isAddress(copmTokenAddress))) {
+      setPaymentError("Falta configurar NEXT_PUBLIC_COPM_TOKEN_ADDRESS");
+      return;
+    }
+
+    const validCopmTokenAddress = copmTokenAddress ?? "";
+
+    setIsPaying(true);
+
+    try {
+      await ensureCeloNetwork(window.ethereum);
+
+      const provider = new BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contributorWallet = await signer.getAddress();
+      const campaignHash = getCampaignHash(activeCampaign.id);
+      const contract = new Contract(
+        contractAddress,
+        aniccaContributionsAbi,
+        signer,
+      );
+
+      setPaymentStatus("Confirma la transacción en tu wallet");
+
+      let txHash = "";
+
+      if (selectedToken === "CELO") {
+        const tx = await contract.contributeCelo(
+          campaignHash,
+          activeCampaign.wallet,
+          { value: parseEther(String(selectedAmount)) },
+        );
+        setPaymentStatus("Esperando confirmación en Celo");
+        const receipt = await tx.wait();
+        txHash = receipt?.hash ?? tx.hash;
+      } else {
+        const amount = parseUnits(String(selectedAmount), copmDecimals);
+        const copm = new Contract(validCopmTokenAddress, erc20ApprovalAbi, signer);
+
+        setPaymentStatus("Aprueba el uso de COPm en tu wallet");
+        const approvalTx = await copm.approve(contractAddress, amount);
+        await approvalTx.wait();
+
+        setPaymentStatus("Confirma la contribución en COPm");
+        const tx = await contract.contributeCopm(
+          campaignHash,
+          activeCampaign.wallet,
+          amount,
+        );
+        setPaymentStatus("Esperando confirmación en Celo");
+        const receipt = await tx.wait();
+        txHash = receipt?.hash ?? tx.hash;
+      }
+
+      await persistContribution({
+        campaignId: activeCampaign.id,
+        contributorWallet,
+        recipientWallet: activeCampaign.wallet,
+        token: selectedToken,
+        amount: String(selectedAmount),
+        ...getContributionSplit(selectedAmount),
+        txHash,
+      });
+
+      setPaymentStatus("Contribución confirmada");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No se pudo completar la contribución";
+
+      setPaymentError(message);
+    } finally {
+      setIsPaying(false);
+    }
+  }
+
+  async function createCreator(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const name = form.name.trim();
     const title = form.title.trim();
     const description = form.description.trim();
     const emoji = form.emoji.trim() || "🚀";
+    const wallet = form.wallet.trim();
 
     if (!name || !title) {
       setFormError("Completa nombre y proyecto");
       return;
     }
 
-    const campaign: Campaign = {
-      id: `custom-${Date.now()}`,
-      name,
-      title,
-      role: title,
-      emoji,
-      description: description || "Proyecto en construcción.",
-      story:
-        description ||
-        "Este proyecto está iniciando su historia. Apóyalo para que pueda crecer, validar su idea y llegar a más personas.",
-      amount: "$0",
-      contributions: 0,
-      video: getYouTubeEmbedUrl(form.video),
-      wallet: form.wallet.trim(),
-    };
+    if (!wallet) {
+      setFormError("Agrega la wallet MiniPay");
+      return;
+    }
+
+    setIsCreatingCampaign(true);
+    setFormError("");
+
+    const story =
+      description ||
+      "Este proyecto está iniciando su historia. Apóyalo para que pueda crecer, validar su idea y llegar a más personas.";
+
+    const { data, error } = await supabase
+      .from("campaigns")
+      .insert({
+        name,
+        title,
+        role: title,
+        emoji,
+        description: description || "Proyecto en construcción.",
+        story,
+        amount_cents: 0,
+        contribution_count: 0,
+        video_url: getYouTubeEmbedUrl(form.video),
+        wallet_address: wallet,
+      })
+      .select(
+        "id,name,title,role,emoji,description,story,amount_cents,contribution_count,video_url,wallet_address",
+      )
+      .single();
+
+    setIsCreatingCampaign(false);
+
+    if (error) {
+      setFormError("No se pudo guardar el proyecto en Supabase");
+      return;
+    }
+
+    const campaign = mapCampaignRow(data);
 
     setCampaigns((current) => [campaign, ...current]);
     setForm(defaultForm);
@@ -266,7 +575,7 @@ export default function Home() {
         <section className="highlight-panel">
           <p className="highlight-label">Proyecto destacado</p>
           <h2 className="highlight-value">
-            <span>125 contribuciones</span> recibidas
+            <span>{totalContributions} contribuciones</span> recibidas
           </h2>
           <p className="highlight-note">
             Recibe aportes desde $0.1 y convierte el interés de tu comunidad en
@@ -282,6 +591,16 @@ export default function Home() {
             </div>
             <span className="section-link">Ver todos</span>
           </div>
+
+          {isLoadingCampaigns ? (
+            <p className="status-message">Cargando proyectos...</p>
+          ) : null}
+          {campaignsError ? <p className="form-error">{campaignsError}</p> : null}
+          {!isLoadingCampaigns && !campaignsError && campaigns.length === 0 ? (
+            <p className="status-message">
+              Todavía no hay proyectos publicados.
+            </p>
+          ) : null}
 
           <div id="creatorsContainer">
             {campaigns.map((campaign) => (
@@ -409,8 +728,8 @@ export default function Home() {
 
           {formError ? <p className="form-error">{formError}</p> : null}
 
-          <button className="create-btn" type="submit">
-            Crear Proyecto
+          <button className="create-btn" type="submit" disabled={isCreatingCampaign}>
+            {isCreatingCampaign ? "Guardando..." : "Crear Proyecto"}
           </button>
         </form>
       </div>
@@ -462,6 +781,21 @@ export default function Home() {
               ))}
             </div>
 
+            <div className="token-toggle" aria-label="Seleccionar moneda">
+              <button
+                className={`token-option${selectedToken === "CELO" ? " active" : ""}`}
+                onClick={() => setSelectedToken("CELO")}
+              >
+                CELO
+              </button>
+              <button
+                className={`token-option${selectedToken === "COPM" ? " active" : ""}`}
+                onClick={() => setSelectedToken("COPM")}
+              >
+                COPm
+              </button>
+            </div>
+
             <div className="custom-amount-box">
               <button
                 className="amount-control"
@@ -486,11 +820,20 @@ export default function Home() {
             </div>
 
             <p className="selected-amount-note">
-              Aporte seleccionado: <strong>{selectedAmountText}</strong>
+              Aporte seleccionado: <strong>{selectedContributionText}</strong>
+              <span>
+                Creador: {selectedSplit.creatorAmount} {selectedToken} · Plataforma:{" "}
+                {selectedSplit.platformFee} {selectedToken}
+              </span>
             </p>
 
-            <button className="full-pay-btn">
-              Contribuir {selectedAmountText} con MiniPay
+            {paymentStatus ? <p className="status-message">{paymentStatus}</p> : null}
+            {paymentError ? <p className="form-error">{paymentError}</p> : null}
+
+            <button className="full-pay-btn" onClick={contribute} disabled={isPaying}>
+              {isPaying
+                ? "Procesando..."
+                : `Contribuir ${selectedContributionText} con MiniPay`}
             </button>
           </div>
         ) : null}
