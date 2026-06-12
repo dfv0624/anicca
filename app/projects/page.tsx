@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Plus, Search } from "lucide-react";
+import { ArrowLeft, Search } from "lucide-react";
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import {
   BrowserProvider,
@@ -34,15 +34,6 @@ type Campaign = {
   wallet: string;
 };
 
-type CreatorForm = {
-  name: string;
-  title: string;
-  description: string;
-  emoji: string;
-  video: string;
-  wallet: string;
-};
-
 type CampaignRow = {
   id: string;
   name: string;
@@ -57,6 +48,15 @@ type CampaignRow = {
   wallet_address: string;
 };
 
+type CreatorForm = {
+  name: string;
+  title: string;
+  description: string;
+  emoji: string;
+  video: string;
+  wallet: string;
+};
+
 type ContributionToken = "CELO" | "COPM";
 
 type EthereumProvider = {
@@ -69,15 +69,7 @@ declare global {
   }
 }
 
-const defaultForm: CreatorForm = {
-  name: "",
-  title: "",
-  description: "",
-  emoji: "🚀",
-  video: "",
-  wallet: "",
-};
-
+const pageSize = 12;
 const contributionOptions = [0.1, 0.5, 1, 2];
 const copmDecimals = 18;
 const platformFeeRate = 0.03;
@@ -88,6 +80,14 @@ const creatorLimits = {
   emojiMax: 8,
   walletLength: 42,
 };
+const defaultForm: CreatorForm = {
+  name: "",
+  title: "",
+  description: "",
+  emoji: "🚀",
+  video: "",
+  wallet: "",
+};
 const contractAddress = process.env.NEXT_PUBLIC_ANICCA_CONTRIBUTIONS_ADDRESS;
 const copmTokenAddress = process.env.NEXT_PUBLIC_COPM_TOKEN_ADDRESS;
 const celoChainId = Number(process.env.NEXT_PUBLIC_CELO_CHAIN_ID || 11142220);
@@ -95,6 +95,8 @@ const celoNetwork =
   celoChainId === celoContracts.mainnet.chainId
     ? celoContracts.mainnet
     : celoContracts.sepolia;
+const campaignSelect =
+  "id,name,title,role,emoji,description,story,amount_cents,contribution_count,video_url,wallet_address";
 
 function formatAmount(value: number) {
   const number = Number(value) || 0;
@@ -103,10 +105,6 @@ function formatAmount(value: number) {
     minimumFractionDigits: number % 1 === 0 ? 0 : 2,
     maximumFractionDigits: 2,
   })}`;
-}
-
-function formatCents(cents: number) {
-  return formatAmount(cents / 100);
 }
 
 function getYouTubeEmbedUrl(url: string) {
@@ -217,87 +215,54 @@ function mapCampaignRow(row: CampaignRow): Campaign {
     emoji: row.emoji,
     description: row.description,
     story: row.story,
-    amount: formatCents(row.amount_cents),
+    amount: formatAmount(row.amount_cents / 100),
     contributions: row.contribution_count,
     video: getYouTubeEmbedUrl(row.video_url ?? ""),
     wallet: row.wallet_address,
   };
 }
 
-export default function Home() {
+export default function ProjectsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [search, setSearch] = useState("");
   const [isCreatorModalOpen, setIsCreatorModalOpen] = useState(false);
-  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
-  const [selectedAmount, setSelectedAmount] = useState(0.1);
   const [form, setForm] = useState<CreatorForm>(defaultForm);
   const [formError, setFormError] = useState("");
-  const [campaignsError, setCampaignsError] = useState("");
-  const [isLoadingCampaigns, setIsLoadingCampaigns] = useState(true);
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
+  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
+  const [selectedAmount, setSelectedAmount] = useState(0.1);
   const [selectedToken, setSelectedToken] = useState<ContributionToken>("CELO");
   const [paymentError, setPaymentError] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
   const [isPaying, setIsPaying] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [error, setError] = useState("");
+
+  const filteredCampaigns = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) {
+      return campaigns;
+    }
+
+    return campaigns.filter(
+      (campaign) =>
+        campaign.name.toLowerCase().includes(query) ||
+        campaign.title.toLowerCase().includes(query) ||
+        campaign.description.toLowerCase().includes(query),
+    );
+  }, [campaigns, search]);
 
   const activeCampaign = useMemo(
     () => campaigns.find((campaign) => campaign.id === activeCampaignId),
     [campaigns, activeCampaignId],
   );
 
-  const totalContributions = useMemo(
-    () =>
-      campaigns.reduce(
-        (total, campaign) => total + campaign.contributions,
-        0,
-      ),
-    [campaigns],
-  );
-
   const selectedContributionText = `${selectedAmount} ${selectedToken === "CELO" ? "CELO" : "COPm"}`;
   const selectedSplit = getContributionSplit(selectedAmount);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadCampaigns() {
-      setIsLoadingCampaigns(true);
-      setCampaignsError("");
-
-      const { data, error } = await supabase
-        .from("campaigns")
-        .select(
-          "id,name,title,role,emoji,description,story,amount_cents,contribution_count,video_url,wallet_address",
-        )
-        .order("created_at", { ascending: false })
-        .limit(6);
-
-      if (!isMounted) {
-        return;
-      }
-
-      if (error) {
-        setCampaignsError(
-          "No se pudieron cargar los proyectos desde Supabase. Revisa la tabla campaigns y sus políticas.",
-        );
-        setCampaigns([]);
-        setIsLoadingCampaigns(false);
-        return;
-      }
-
-      setCampaigns(data.map(mapCampaignRow));
-      setIsLoadingCampaigns(false);
-    }
-
-    loadCampaigns();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  function scrollToProjects() {
-    document.getElementById("projects")?.scrollIntoView({ behavior: "smooth" });
-  }
 
   function resetAmountSelector() {
     setSelectedAmount(0.1);
@@ -320,7 +285,9 @@ export default function Home() {
   }
 
   function changeCustomAmount(delta: number) {
-    setSelectedAmount((current) => Number(Math.max(0.1, current + delta).toFixed(2)));
+    setSelectedAmount((current) =>
+      Number(Math.max(0.1, current + delta).toFixed(2)),
+    );
   }
 
   function syncCustomAmount(value: string) {
@@ -387,6 +354,16 @@ export default function Home() {
     return keccak256(toUtf8Bytes(campaignId));
   }
 
+  function getContributionSplit(amount: number) {
+    const platformFee = Number((amount * platformFeeRate).toFixed(8));
+    const creatorAmount = Number((amount - platformFee).toFixed(8));
+
+    return {
+      creatorAmount: String(creatorAmount),
+      platformFee: String(platformFee),
+    };
+  }
+
   async function persistContribution(params: {
     campaignId: string;
     contributorWallet: string;
@@ -409,16 +386,6 @@ export default function Home() {
       chain_id: celoChainId,
       status: "confirmed",
     });
-  }
-
-  function getContributionSplit(amount: number) {
-    const platformFee = Number((amount * platformFeeRate).toFixed(8));
-    const creatorAmount = Number((amount - platformFee).toFixed(8));
-
-    return {
-      creatorAmount: String(creatorAmount),
-      platformFee: String(platformFee),
-    };
   }
 
   async function contribute() {
@@ -557,9 +524,7 @@ export default function Home() {
         video_url: getYouTubeEmbedUrl(form.video),
         wallet_address: wallet,
       })
-      .select(
-        "id,name,title,role,emoji,description,story,amount_cents,contribution_count,video_url,wallet_address",
-      )
+      .select(campaignSelect)
       .single();
 
     setIsCreatingCampaign(false);
@@ -577,11 +542,64 @@ export default function Home() {
     setIsCreatorModalOpen(false);
   }
 
+  async function loadCampaigns(nextPage: number) {
+    const from = nextPage * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data, error: queryError } = await supabase
+      .from("campaigns")
+      .select(campaignSelect)
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    if (queryError) {
+      setError("No se pudieron cargar los proyectos");
+      return;
+    }
+
+    const nextCampaigns = data.map(mapCampaignRow);
+
+    setCampaigns((current) =>
+      nextPage === 0 ? nextCampaigns : [...current, ...nextCampaigns],
+    );
+    setHasMore(nextCampaigns.length === pageSize);
+    setPage(nextPage);
+  }
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadInitialCampaigns() {
+      setIsLoading(true);
+      setError("");
+      await loadCampaigns(0);
+
+      if (isMounted) {
+        setIsLoading(false);
+      }
+    }
+
+    loadInitialCampaigns();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  async function loadMore() {
+    setIsLoadingMore(true);
+    await loadCampaigns(page + 1);
+    setIsLoadingMore(false);
+  }
+
   return (
-    <>
-      <div className="app-shell">
-        <header className="top-bar">
-          <div className="brand-mark">
+    <div className="app-shell">
+      <header className="top-bar">
+        <Link className="icon-link" href="/" aria-label="Volver al inicio">
+          <ArrowLeft className="nav-icon" aria-hidden="true" />
+        </Link>
+        <div className="brand-mark">
+          <Link href="/" aria-label="Volver al inicio">
             <Image
               className="brand-logo"
               src="/LOGO.png"
@@ -590,102 +608,36 @@ export default function Home() {
               height={36}
               priority
             />
-          </div>
-          <button className="top-action" onClick={() => setIsCreatorModalOpen(true)}>
-            Crear
-          </button>
-        </header>
+          </Link>
+        </div>
+        <button className="top-action" onClick={() => setIsCreatorModalOpen(true)}>
+          Crear
+        </button>
+      </header>
 
-        <section className="hero">
-          <div className="hero-inner">
-            <div className="logo">Contribuciones para creadores</div>
-            <h1 className="hero-title">Apoya proyectos. Impulsa personas.</h1>
-            <p className="hero-description">
-              Descubre desarrolladores, diseñadores, escritores y emprendedores.
-              Contribuye directamente a sus proyectos con pagos en Celo.
-            </p>
-            <div className="hero-actions">
-              <button className="btn btn-primary" onClick={scrollToProjects}>
-                Explorar
-              </button>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setIsCreatorModalOpen(true)}
-              >
-                Crear Proyecto
-              </button>
-            </div>
+      <main className="projects-page">
+        <section className="section projects-header">
+          <span className="section-eyebrow">Explorar</span>
+          <h1 className="section-title">Todos los proyectos</h1>
+          <div className="search-box">
+            <Search className="search-icon" aria-hidden="true" />
+            <input
+              placeholder="Buscar proyecto"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
           </div>
         </section>
 
-        <section className="how-it-works">
-          <h2 className="how-title">¿Cómo funciona?</h2>
-          <p className="how-copy">
-            Un flujo simple para publicar una idea, compartirla y recibir
-            contribuciones directas.
-          </p>
-
-          <div className="steps-grid">
-            <div className="step">
-              <div className="step-number">1</div>
-              <div className="step-text">
-                <strong>Crea tu proyecto</strong>
-                Cuéntale al mundo qué estás construyendo.
-              </div>
-            </div>
-
-            <div className="step">
-              <div className="step-number">2</div>
-              <div className="step-text">
-                <strong>Comparte tu página</strong>
-                Envíala a amigos, seguidores o tu comunidad.
-              </div>
-            </div>
-
-            <div className="step">
-              <div className="step-number">3</div>
-              <div className="step-text">
-                <strong>Recibe apoyo directo</strong>
-                Acepta contribuciones económicas de forma directa.
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="highlight-panel">
-          <p className="highlight-label">Proyecto destacado</p>
-          <h2 className="highlight-value">
-            <span>{totalContributions} contribuciones</span> recibidas
-          </h2>
-          <p className="highlight-note">
-            Recibe aportes desde $0.1 y convierte el interés de tu comunidad en
-            apoyo real.
-          </p>
-        </section>
-
-        <section className="section" id="projects">
-          <div className="section-heading">
-            <div>
-              <span className="section-eyebrow">Explorar</span>
-              <h2 className="section-title">Proyectos recientes</h2>
-            </div>
-            <Link className="section-link" href="/projects">
-              Ver todos
-            </Link>
-          </div>
-
-          {isLoadingCampaigns ? (
-            <p className="status-message">Cargando proyectos...</p>
-          ) : null}
-          {campaignsError ? <p className="form-error">{campaignsError}</p> : null}
-          {!isLoadingCampaigns && !campaignsError && campaigns.length === 0 ? (
-            <p className="status-message">
-              Todavía no hay proyectos publicados.
-            </p>
+        <section className="section" id="projectsList">
+          {isLoading ? <p className="status-message">Cargando proyectos...</p> : null}
+          {error ? <p className="form-error">{error}</p> : null}
+          {!isLoading && !error && filteredCampaigns.length === 0 ? (
+            <p className="status-message">No hay proyectos para mostrar.</p>
           ) : null}
 
           <div id="creatorsContainer">
-            {campaigns.map((campaign) => (
+            {filteredCampaigns.map((campaign) => (
               <article
                 className="creator-card"
                 key={campaign.id}
@@ -702,7 +654,7 @@ export default function Home() {
                 <div className="stats">
                   <div className="money-stats">
                     <div className="amount-received">
-                      💰 {campaign.amount} recibidos
+                      {campaign.amount} recibidos
                     </div>
                     <div className="contribution-count">
                       {campaign.contributions} contribuciones
@@ -718,19 +670,19 @@ export default function Home() {
               </article>
             ))}
           </div>
-        </section>
-      </div>
 
-      <nav className="bottom-nav">
-        <button className="nav-item" onClick={scrollToProjects}>
-          <Search className="nav-icon" aria-hidden="true" />
-          <div className="nav-label">Explorar</div>
-        </button>
-        <button className="nav-item" onClick={() => setIsCreatorModalOpen(true)}>
-          <Plus className="nav-icon" aria-hidden="true" />
-          <div className="nav-label">Crear Proyecto</div>
-        </button>
-      </nav>
+          {!search && hasMore ? (
+            <button
+              className="load-more-btn"
+              type="button"
+              onClick={loadMore}
+              disabled={isLoadingMore}
+            >
+              {isLoadingMore ? "Cargando..." : "Cargar más"}
+            </button>
+          ) : null}
+        </section>
+      </main>
 
       <div
         className={`modal${isCreatorModalOpen ? " active" : ""}`}
@@ -748,11 +700,11 @@ export default function Home() {
             </button>
           </div>
 
-          <label className="field-label" htmlFor="creatorName">
+          <label className="field-label" htmlFor="projectsCreatorName">
             Nombre
           </label>
           <input
-            id="creatorName"
+            id="projectsCreatorName"
             required
             minLength={2}
             maxLength={creatorLimits.nameMax}
@@ -761,11 +713,11 @@ export default function Home() {
             onChange={(event) => updateForm("name", event.target.value)}
           />
 
-          <label className="field-label" htmlFor="creatorTitle">
+          <label className="field-label" htmlFor="projectsCreatorTitle">
             Proyecto
           </label>
           <input
-            id="creatorTitle"
+            id="projectsCreatorTitle"
             required
             minLength={3}
             maxLength={creatorLimits.titleMax}
@@ -774,44 +726,44 @@ export default function Home() {
             onChange={(event) => updateForm("title", event.target.value)}
           />
 
-          <label className="field-label" htmlFor="creatorDescription">
+          <label className="field-label" htmlFor="projectsCreatorDescription">
             Descripción
           </label>
           <textarea
-            id="creatorDescription"
+            id="projectsCreatorDescription"
             maxLength={creatorLimits.descriptionMax}
             placeholder="Describe tu proyecto"
             value={form.description}
             onChange={(event) => updateForm("description", event.target.value)}
           />
 
-          <label className="field-label" htmlFor="creatorEmoji">
+          <label className="field-label" htmlFor="projectsCreatorEmoji">
             Emoji
           </label>
           <input
-            id="creatorEmoji"
+            id="projectsCreatorEmoji"
             maxLength={creatorLimits.emojiMax}
             placeholder="Emoji"
             value={form.emoji}
             onChange={(event) => updateForm("emoji", event.target.value)}
           />
 
-          <label className="field-label" htmlFor="creatorVideo">
+          <label className="field-label" htmlFor="projectsCreatorVideo">
             Video de YouTube
           </label>
           <input
-            id="creatorVideo"
+            id="projectsCreatorVideo"
             type="url"
             placeholder="URL de YouTube para contar tu historia"
             value={form.video}
             onChange={(event) => updateForm("video", event.target.value)}
           />
 
-          <label className="field-label" htmlFor="creatorWallet">
+          <label className="field-label" htmlFor="projectsCreatorWallet">
             Wallet
           </label>
           <input
-            id="creatorWallet"
+            id="projectsCreatorWallet"
             required
             maxLength={creatorLimits.walletLength}
             spellCheck={false}
@@ -858,7 +810,6 @@ export default function Home() {
             </div>
 
             <h3 className="campaign-story-title">Historia del proyecto</h3>
-
             <p className="campaign-story">{activeCampaign.story}</p>
 
             <div className="amount-grid">
@@ -932,6 +883,6 @@ export default function Home() {
           </div>
         ) : null}
       </div>
-    </>
+    </div>
   );
 }
