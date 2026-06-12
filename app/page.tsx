@@ -80,6 +80,13 @@ const defaultForm: CreatorForm = {
 const contributionOptions = [0.1, 0.5, 1, 2];
 const copmDecimals = 18;
 const platformFeeRate = 0.03;
+const creatorLimits = {
+  nameMax: 60,
+  titleMax: 80,
+  descriptionMax: 500,
+  emojiMax: 8,
+  walletLength: 42,
+};
 const contractAddress = process.env.NEXT_PUBLIC_ANICCA_CONTRIBUTIONS_ADDRESS;
 const copmTokenAddress = process.env.NEXT_PUBLIC_COPM_TOKEN_ADDRESS;
 const celoChainId = Number(process.env.NEXT_PUBLIC_CELO_CHAIN_ID || 11142220);
@@ -123,6 +130,81 @@ function getYouTubeEmbedUrl(url: string) {
   }
 
   return "https://www.youtube.com/embed/dQw4w9WgXcQ";
+}
+
+function isValidYouTubeUrl(url: string) {
+  const cleanUrl = url.trim();
+
+  if (!cleanUrl) {
+    return true;
+  }
+
+  try {
+    const parsedUrl = new URL(cleanUrl);
+    const host = parsedUrl.hostname.replace(/^www\./, "");
+
+    if (host === "youtu.be") {
+      return parsedUrl.pathname.length > 1;
+    }
+
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      return Boolean(
+        parsedUrl.searchParams.get("v") ||
+          parsedUrl.pathname.startsWith("/embed/"),
+      );
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function validateCreatorForm(form: CreatorForm) {
+  const name = form.name.trim();
+  const title = form.title.trim();
+  const description = form.description.trim();
+  const emoji = form.emoji.trim();
+  const video = form.video.trim();
+  const wallet = form.wallet.trim();
+
+  if (name.length < 2) {
+    return "El nombre debe tener al menos 2 caracteres";
+  }
+
+  if (name.length > creatorLimits.nameMax) {
+    return `El nombre no puede superar ${creatorLimits.nameMax} caracteres`;
+  }
+
+  if (title.length < 3) {
+    return "El proyecto debe tener al menos 3 caracteres";
+  }
+
+  if (title.length > creatorLimits.titleMax) {
+    return `El proyecto no puede superar ${creatorLimits.titleMax} caracteres`;
+  }
+
+  if (description.length > creatorLimits.descriptionMax) {
+    return `La descripción no puede superar ${creatorLimits.descriptionMax} caracteres`;
+  }
+
+  if (emoji && emoji.length > creatorLimits.emojiMax) {
+    return "Usa un emoji o símbolo corto";
+  }
+
+  if (video && !isValidYouTubeUrl(video)) {
+    return "Ingresa una URL válida de YouTube";
+  }
+
+  if (!wallet) {
+    return "Agrega la wallet";
+  }
+
+  if (!isAddress(wallet)) {
+    return "Ingresa una wallet válida";
+  }
+
+  return "";
 }
 
 function mapCampaignRow(row: CampaignRow): Campaign {
@@ -445,14 +527,10 @@ export default function Home() {
     const description = form.description.trim();
     const emoji = form.emoji.trim() || "🚀";
     const wallet = form.wallet.trim();
+    const validationError = validateCreatorForm(form);
 
-    if (!name || !title) {
-      setFormError("Completa nombre y proyecto");
-      return;
-    }
-
-    if (!wallet) {
-      setFormError("Agrega la wallet MiniPay");
+    if (validationError) {
+      setFormError(validationError);
       return;
     }
 
@@ -518,11 +596,11 @@ export default function Home() {
 
         <section className="hero">
           <div className="hero-inner">
-            <div className="logo">MiniPay para creadores</div>
+            <div className="logo">Contribuciones para creadores</div>
             <h1 className="hero-title">Apoya proyectos. Impulsa personas.</h1>
             <p className="hero-description">
               Descubre desarrolladores, diseñadores, escritores y emprendedores.
-              Contribuye directamente a sus proyectos usando MiniPay.
+              Contribuye directamente a sus proyectos con pagos en Celo.
             </p>
             <div className="hero-actions">
               <button className="btn btn-primary" onClick={scrollToProjects}>
@@ -565,7 +643,7 @@ export default function Home() {
             <div className="step">
               <div className="step-number">3</div>
               <div className="step-text">
-                <strong>Recibe apoyo con MiniPay</strong>
+                <strong>Recibe apoyo directo</strong>
                 Acepta contribuciones económicas de forma directa.
               </div>
             </div>
@@ -671,6 +749,9 @@ export default function Home() {
           </label>
           <input
             id="creatorName"
+            required
+            minLength={2}
+            maxLength={creatorLimits.nameMax}
             placeholder="Tu nombre"
             value={form.name}
             onChange={(event) => updateForm("name", event.target.value)}
@@ -681,6 +762,9 @@ export default function Home() {
           </label>
           <input
             id="creatorTitle"
+            required
+            minLength={3}
+            maxLength={creatorLimits.titleMax}
             placeholder="¿Qué estás construyendo?"
             value={form.title}
             onChange={(event) => updateForm("title", event.target.value)}
@@ -691,6 +775,7 @@ export default function Home() {
           </label>
           <textarea
             id="creatorDescription"
+            maxLength={creatorLimits.descriptionMax}
             placeholder="Describe tu proyecto"
             value={form.description}
             onChange={(event) => updateForm("description", event.target.value)}
@@ -701,6 +786,7 @@ export default function Home() {
           </label>
           <input
             id="creatorEmoji"
+            maxLength={creatorLimits.emojiMax}
             placeholder="Emoji"
             value={form.emoji}
             onChange={(event) => updateForm("emoji", event.target.value)}
@@ -711,17 +797,21 @@ export default function Home() {
           </label>
           <input
             id="creatorVideo"
+            type="url"
             placeholder="URL de YouTube para contar tu historia"
             value={form.video}
             onChange={(event) => updateForm("video", event.target.value)}
           />
 
           <label className="field-label" htmlFor="creatorWallet">
-            Wallet MiniPay
+            Wallet
           </label>
           <input
             id="creatorWallet"
-            placeholder="Wallet MiniPay"
+            required
+            maxLength={creatorLimits.walletLength}
+            spellCheck={false}
+            placeholder="Wallet"
             value={form.wallet}
             onChange={(event) => updateForm("wallet", event.target.value)}
           />
@@ -759,7 +849,7 @@ export default function Home() {
               <div className="campaign-kicker">Total recibido</div>
               <div className="campaign-amount">{activeCampaign.amount}</div>
               <div className="campaign-meta">
-                {activeCampaign.contributions} contribuciones recibidas con MiniPay
+                {activeCampaign.contributions} contribuciones recibidas
               </div>
             </div>
 
@@ -833,7 +923,7 @@ export default function Home() {
             <button className="full-pay-btn" onClick={contribute} disabled={isPaying}>
               {isPaying
                 ? "Procesando..."
-                : `Contribuir ${selectedContributionText} con MiniPay`}
+                : `Contribuir ${selectedContributionText}`}
             </button>
           </div>
         ) : null}
