@@ -374,7 +374,7 @@ export default function ProjectsPage() {
     platformFee: string;
     txHash: string;
   }) {
-    await supabase.from("contributions").insert({
+    const { error } = await supabase.from("contributions").insert({
       campaign_id: params.campaignId,
       contributor_wallet: params.contributorWallet,
       recipient_wallet: params.recipientWallet,
@@ -386,6 +386,12 @@ export default function ProjectsPage() {
       chain_id: celoChainId,
       status: "confirmed",
     });
+
+    if (error) {
+      throw new Error(
+        `Transaccion confirmada, pero Supabase no la guardo: ${error.message}`,
+      );
+    }
   }
 
   async function contribute() {
@@ -475,6 +481,16 @@ export default function ProjectsPage() {
         txHash,
       });
 
+      setCampaigns((currentCampaigns) =>
+        currentCampaigns.map((campaign) =>
+          campaign.id === activeCampaign.id
+            ? {
+                ...campaign,
+                contributions: campaign.contributions + 1,
+              }
+            : campaign,
+        ),
+      );
       setPaymentStatus("Contribución confirmada");
     } catch (error) {
       const message =

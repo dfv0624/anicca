@@ -55,3 +55,31 @@ create policy "Anyone can create contributions"
 on public.contributions
 for insert
 with check (true);
+
+create or replace function public.increment_campaign_contribution_count()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.campaigns
+  set contribution_count = contribution_count + 1
+  where id = new.campaign_id;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists contributions_increment_campaign_count on public.contributions;
+create trigger contributions_increment_campaign_count
+after insert on public.contributions
+for each row
+execute function public.increment_campaign_contribution_count();
+
+update public.campaigns campaign
+set contribution_count = (
+  select count(*)
+  from public.contributions contribution
+  where contribution.campaign_id = campaign.id
+);
