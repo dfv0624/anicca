@@ -30,7 +30,7 @@ type Campaign = {
   amountUnits: number;
   amount: string;
   contributions: number;
-  video: string;
+  video: string | null;
   wallet: string;
 };
 
@@ -163,11 +163,11 @@ function getPaymentErrorMessage(error: unknown, tokenLabel: string) {
 }
 
 function getYouTubeEmbedUrl(url: string) {
-  if (!url) {
-    return "https://www.youtube.com/embed/dQw4w9WgXcQ";
-  }
-
   const cleanUrl = url.trim();
+
+  if (!cleanUrl) {
+    return null;
+  }
 
   if (cleanUrl.includes("youtube.com/embed/")) {
     return cleanUrl;
@@ -183,7 +183,7 @@ function getYouTubeEmbedUrl(url: string) {
     return `https://www.youtube.com/embed/${shortMatch[1]}`;
   }
 
-  return "https://www.youtube.com/embed/dQw4w9WgXcQ";
+  return null;
 }
 
 function isValidYouTubeUrl(url: string) {
@@ -941,13 +941,15 @@ export default function ProjectsPage() {
               </button>
             </div>
 
-            <div className="campaign-video">
-              <iframe
-                src={activeCampaign.video}
-                title="Historia del proyecto"
-                allowFullScreen
-              />
-            </div>
+            {activeCampaign.video ? (
+              <div className="campaign-video">
+                <iframe
+                  src={activeCampaign.video}
+                  title="Historia del proyecto"
+                  allowFullScreen
+                />
+              </div>
+            ) : null}
 
             <div className="campaign-summary">
               <div className="campaign-kicker">Total recibido</div>
