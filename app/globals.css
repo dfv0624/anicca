@@ -87,27 +87,22 @@ button {
 }
 
 .hero {
-  position: relative;
   padding: 20px 20px 34px;
   background: #1f1f1f;
   text-align: center;
 }
 
-.hero::before {
-  position: absolute;
-  inset: 22px 20px auto;
-  z-index: 0;
-  height: 220px;
-  border-radius: 36px;
-  background: #fc853f;
-  content: "";
-  opacity: 0.96;
+.hero-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-.hero-inner {
-  position: relative;
-  z-index: 1;
-  padding: 18px 18px 26px;
+.hero-card {
+  width: 100%;
+  padding: 24px 16px 34px;
+  border-radius: 36px;
+  background: #fc853f;
 }
 
 .logo {
@@ -126,15 +121,15 @@ button {
 .hero-title {
   max-width: 330px;
   margin: 18px auto 0;
-  font-size: 36px;
+  font-size: clamp(30px, 9.2vw, 36px);
   font-weight: 700;
-  letter-spacing: -1.05px;
+  letter-spacing: 0;
   line-height: 1.04;
 }
 
 .hero-description {
   max-width: 350px;
-  margin: 40px auto 0;
+  margin: 18px auto 0;
   color: rgba(255, 255, 255, 0.88);
   font-size: 14px;
   line-height: 1.7;
@@ -956,7 +951,7 @@ button {
 .selected-amount-note {
   margin: 0 0 12px;
   color: var(--text);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.45;
   text-align: center;
 }
@@ -968,6 +963,7 @@ button {
 .selected-amount-note span {
   display: block;
   margin-top: 5px;
+  font-size: 11px;
 }
 
 .full-pay-btn {
@@ -1001,7 +997,7 @@ button {
   }
 
   .hero-title {
-    font-size: 34px;
+    font-size: 30px;
   }
 
   .hero-actions {

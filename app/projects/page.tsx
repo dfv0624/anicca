@@ -322,6 +322,8 @@ export default function ProjectsPage() {
 
   const selectedContributionText = `${selectedAmount} ${selectedToken === "COPM" ? "COPm" : "USDT"}`;
   const selectedSplit = getContributionSplit(selectedAmount);
+  const platformFeePercentage = Math.round(platformFeeRate * 100);
+  const creatorPercentage = 100 - platformFeePercentage;
 
   function resetAmountSelector() {
     setSelectedAmount(0.1);
@@ -1013,8 +1015,8 @@ export default function ProjectsPage() {
             <p className="selected-amount-note">
               Aporte seleccionado: <strong>{selectedContributionText}</strong>
               <span>
-                Creador: {selectedSplit.creatorAmount} {selectedToken} · Plataforma:{" "}
-                {selectedSplit.platformFee} {selectedToken}
+                Creador: {creatorPercentage}% · Plataforma:{" "}
+                {platformFeePercentage}%
               </span>
             </p>
 

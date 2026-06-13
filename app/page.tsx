@@ -310,6 +310,8 @@ export default function Home() {
 
   const selectedContributionText = `${selectedAmount} ${selectedToken === "COPM" ? "COPm" : "USDT"}`;
   const selectedSplit = getContributionSplit(selectedAmount);
+  const platformFeePercentage = Math.round(platformFeeRate * 100);
+  const creatorPercentage = 100 - platformFeePercentage;
 
   useEffect(() => {
     let isMounted = true;
@@ -715,8 +717,10 @@ export default function Home() {
 
         <section className="hero">
           <div className="hero-inner">
-            <div className="logo">Contribuciones para creadores</div>
-            <h1 className="hero-title">Apoya proyectos. Impulsa personas.</h1>
+            <div className="hero-card">
+              <div className="logo">Contribuciones para creadores</div>
+              <h1 className="hero-title">Apoya proyectos. Impulsa personas.</h1>
+            </div>
             <p className="hero-description">
               Descubre desarrolladores, diseñadores, escritores y emprendedores.
               Contribuye directamente a sus proyectos con USDT y COPm sobre Celo.
@@ -1058,8 +1062,8 @@ export default function Home() {
             <p className="selected-amount-note">
               Aporte seleccionado: <strong>{selectedContributionText}</strong>
               <span>
-                Creador: {selectedSplit.creatorAmount} {selectedToken} · Plataforma:{" "}
-                {selectedSplit.platformFee} {selectedToken}
+                Creador: {creatorPercentage}% · Plataforma:{" "}
+                {platformFeePercentage}%
               </span>
             </p>
 
