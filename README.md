@@ -1,6 +1,6 @@
 # Anicca
 
-Anicca es una aplicación para publicar proyectos de creadores y recibir contribuciones directas usando Celo y COPm. La persistencia de proyectos y transacciones se maneja con Supabase, y la lógica de reparto de pagos vive en un contrato inteligente.
+Anicca es una aplicación para publicar proyectos de creadores y recibir contribuciones directas usando USDT y COPm sobre Celo. La persistencia de proyectos y transacciones se maneja con Supabase, y la lógica de reparto de pagos vive en un contrato inteligente.
 
 ## Stack
 
@@ -17,7 +17,7 @@ Anicca es una aplicación para publicar proyectos de creadores y recibir contrib
 - Persistir proyectos en Supabase.
 - Listar solo proyectos reales desde la base de datos.
 - Conectar wallet desde el frontend.
-- Preparar pagos en CELO y COPm.
+- Preparar pagos en USDT y COPm.
 - Repartir contribuciones desde contrato inteligente:
   - 97% para el creador.
   - 3% para la plataforma.

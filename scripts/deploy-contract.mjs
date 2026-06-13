@@ -6,10 +6,15 @@ const env = loadEnv();
 const rpcUrl = requireEnv(env, "CELO_RPC_URL");
 const privateKey = requireEnv(env, "CELO_DEPLOYER_PRIVATE_KEY");
 const copmAddress = requireEnv(env, "NEXT_PUBLIC_COPM_TOKEN_ADDRESS");
+const usdtAddress = requireEnv(env, "NEXT_PUBLIC_USDT_TOKEN_ADDRESS");
 const platformTreasuryAddress = requireEnv(env, "PLATFORM_TREASURY_ADDRESS");
 
 if (!isAddress(copmAddress)) {
   throw new Error("NEXT_PUBLIC_COPM_TOKEN_ADDRESS is not a valid EVM address");
+}
+
+if (!isAddress(usdtAddress)) {
+  throw new Error("NEXT_PUBLIC_USDT_TOKEN_ADDRESS is not a valid EVM address");
 }
 
 if (!isAddress(platformTreasuryAddress)) {
@@ -30,9 +35,10 @@ const factory = new ContractFactory(artifact.abi, artifact.bytecode, wallet);
 
 console.log(`Deploying AniccaContributions from ${wallet.address}`);
 console.log(`COPm token: ${copmAddress}`);
+console.log(`USDT token: ${usdtAddress}`);
 console.log(`Platform treasury: ${platformTreasuryAddress}`);
 
-const contract = await factory.deploy(copmAddress, platformTreasuryAddress);
+const contract = await factory.deploy(copmAddress, usdtAddress, platformTreasuryAddress);
 await contract.waitForDeployment();
 
 const address = await contract.getAddress();

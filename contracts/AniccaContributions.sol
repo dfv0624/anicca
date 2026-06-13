@@ -16,7 +16,7 @@ contract AniccaContributions {
     uint256 public constant FEE_BASIS_POINTS = 300;
     uint256 public constant BASIS_POINTS = 10_000;
 
-    event CeloContribution(
+    event CopmContribution(
         bytes32 indexed campaignId,
         address indexed contributor,
         address indexed recipient,
@@ -24,7 +24,7 @@ contract AniccaContributions {
         uint256 creatorAmount,
         uint256 platformFee
     );
-    event CopmContribution(
+    event UsdtContribution(
         bytes32 indexed campaignId,
         address indexed contributor,
         address indexed recipient,
@@ -39,6 +39,7 @@ contract AniccaContributions {
     address public owner;
     address payable public platformTreasury;
     IERC20 public immutable copm;
+    IERC20 public immutable usdt;
 
     uint256 private locked;
 
@@ -54,13 +55,15 @@ contract AniccaContributions {
         locked = 0;
     }
 
-    constructor(address copmAddress, address payable platformTreasuryAddress) {
+    constructor(address copmAddress, address usdtAddress, address payable platformTreasuryAddress) {
         if (copmAddress == address(0)) revert InvalidRecipient();
+        if (usdtAddress == address(0)) revert InvalidRecipient();
         if (platformTreasuryAddress == address(0)) revert InvalidRecipient();
 
         owner = msg.sender;
         platformTreasury = platformTreasuryAddress;
         copm = IERC20(copmAddress);
+        usdt = IERC20(usdtAddress);
 
         emit OwnershipTransferred(address(0), msg.sender);
         emit PlatformTreasuryUpdated(address(0), platformTreasuryAddress);
@@ -71,41 +74,43 @@ contract AniccaContributions {
         emit NativeDeposit(msg.sender, msg.value);
     }
 
-    function contributeCelo(
-        bytes32 campaignId,
-        address payable recipient
-    ) external payable nonReentrant {
-        if (msg.value == 0) revert AmountMustBeGreaterThanZero();
-        if (recipient == address(0)) revert InvalidRecipient();
-
-        (uint256 platformFee, uint256 creatorAmount) = splitAmount(msg.value);
-
-        (bool feeSuccess, ) = platformTreasury.call{ value: platformFee }("");
-        if (!feeSuccess) revert TransferFailed();
-
-        (bool creatorSuccess, ) = recipient.call{ value: creatorAmount }("");
-        if (!creatorSuccess) revert TransferFailed();
-
-        emit CeloContribution(campaignId, msg.sender, recipient, msg.value, creatorAmount, platformFee);
-    }
-
     function contributeCopm(
         bytes32 campaignId,
         address recipient,
         uint256 amount
     ) external nonReentrant {
+        _contributeToken(copm, recipient, amount);
+        (uint256 platformFee, uint256 creatorAmount) = splitAmount(amount);
+
+        emit CopmContribution(campaignId, msg.sender, recipient, amount, creatorAmount, platformFee);
+    }
+
+    function contributeUsdt(
+        bytes32 campaignId,
+        address recipient,
+        uint256 amount
+    ) external nonReentrant {
+        _contributeToken(usdt, recipient, amount);
+        (uint256 platformFee, uint256 creatorAmount) = splitAmount(amount);
+
+        emit UsdtContribution(campaignId, msg.sender, recipient, amount, creatorAmount, platformFee);
+    }
+
+    function _contributeToken(
+        IERC20 token,
+        address recipient,
+        uint256 amount
+    ) private {
         if (amount == 0) revert AmountMustBeGreaterThanZero();
         if (recipient == address(0)) revert InvalidRecipient();
 
         (uint256 platformFee, uint256 creatorAmount) = splitAmount(amount);
 
-        bool feeSuccess = copm.transferFrom(msg.sender, platformTreasury, platformFee);
+        bool feeSuccess = token.transferFrom(msg.sender, platformTreasury, platformFee);
         if (!feeSuccess) revert TransferFailed();
 
-        bool creatorSuccess = copm.transferFrom(msg.sender, recipient, creatorAmount);
+        bool creatorSuccess = token.transferFrom(msg.sender, recipient, creatorAmount);
         if (!creatorSuccess) revert TransferFailed();
-
-        emit CopmContribution(campaignId, msg.sender, recipient, amount, creatorAmount, platformFee);
     }
 
     function splitAmount(uint256 amount) public pure returns (uint256 platformFee, uint256 creatorAmount) {

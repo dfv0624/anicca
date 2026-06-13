@@ -627,6 +627,63 @@ button {
   line-height: 1.5;
 }
 
+.payment-notice {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.payment-notice.info {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.payment-notice.success {
+  border-color: rgba(82, 190, 128, 0.35);
+  background: rgba(82, 190, 128, 0.12);
+  color: #b9f5cf;
+}
+
+.payment-notice.error {
+  border-color: rgba(255, 120, 79, 0.35);
+  background: rgba(255, 120, 79, 0.12);
+  color: var(--orange-light);
+}
+
+.toast-notice {
+  position: fixed;
+  top: 22px;
+  right: 22px;
+  z-index: 80;
+  width: min(340px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 120, 79, 0.36);
+  border-radius: 8px;
+  background: rgba(39, 28, 25, 0.96);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+  color: var(--orange-light);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+  animation: toast-in 180ms ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .create-btn {
   width: 100%;
   margin-top: 16px;
@@ -877,5 +934,12 @@ button {
 
   .support-btn {
     width: 100%;
+  }
+
+  .toast-notice {
+    top: 14px;
+    right: 14px;
+    left: 14px;
+    width: auto;
   }
 }

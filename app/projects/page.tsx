@@ -9,7 +9,6 @@ import {
   Contract,
   isAddress,
   keccak256,
-  parseEther,
   parseUnits,
   toUtf8Bytes,
 } from "ethers";
@@ -28,6 +27,7 @@ type Campaign = {
   emoji: string;
   description: string;
   story: string;
+  amountUnits: number;
   amount: string;
   contributions: number;
   video: string;
@@ -43,6 +43,7 @@ type CampaignRow = {
   description: string;
   story: string;
   amount_cents: number;
+  creator_amount_units: string | number | null;
   contribution_count: number;
   video_url: string | null;
   wallet_address: string;
@@ -57,7 +58,7 @@ type CreatorForm = {
   wallet: string;
 };
 
-type ContributionToken = "CELO" | "COPM";
+type ContributionToken = "USDT" | "COPM";
 
 type EthereumProvider = {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -72,6 +73,7 @@ declare global {
 const pageSize = 12;
 const contributionOptions = [0.1, 0.5, 1, 2];
 const copmDecimals = 18;
+const usdtDecimals = Number(process.env.NEXT_PUBLIC_USDT_DECIMALS || 6);
 const platformFeeRate = 0.03;
 const creatorLimits = {
   nameMax: 60,
@@ -90,21 +92,74 @@ const defaultForm: CreatorForm = {
 };
 const contractAddress = process.env.NEXT_PUBLIC_ANICCA_CONTRIBUTIONS_ADDRESS;
 const copmTokenAddress = process.env.NEXT_PUBLIC_COPM_TOKEN_ADDRESS;
+const usdtTokenAddress = process.env.NEXT_PUBLIC_USDT_TOKEN_ADDRESS;
 const celoChainId = Number(process.env.NEXT_PUBLIC_CELO_CHAIN_ID || 11142220);
 const celoNetwork =
   celoChainId === celoContracts.mainnet.chainId
     ? celoContracts.mainnet
     : celoContracts.sepolia;
 const campaignSelect =
-  "id,name,title,role,emoji,description,story,amount_cents,contribution_count,video_url,wallet_address";
+  "id,name,title,role,emoji,description,story,amount_cents,creator_amount_units,contribution_count,video_url,wallet_address";
 
 function formatAmount(value: number) {
   const number = Number(value) || 0;
 
   return `$${number.toLocaleString("en-US", {
     minimumFractionDigits: number % 1 === 0 ? 0 : 2,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 8,
   })}`;
+}
+
+function getCreatorAmountUnits(row: CampaignRow) {
+  return Number(row.creator_amount_units ?? row.amount_cents / 100) || 0;
+}
+
+function getPaymentErrorMessage(error: unknown, tokenLabel: string) {
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code: unknown }).code)
+      : "";
+  const reason =
+    typeof error === "object" && error !== null && "reason" in error
+      ? String((error as { reason: unknown }).reason)
+      : "";
+  const shortMessage =
+    typeof error === "object" && error !== null && "shortMessage" in error
+      ? String((error as { shortMessage: unknown }).shortMessage)
+      : "";
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const details = `${code} ${reason} ${shortMessage} ${message}`.toLowerCase();
+
+  if (code === "4001" || code === "ACTION_REJECTED" || details.includes("user rejected")) {
+    return "Cancelaste la operación en tu wallet.";
+  }
+
+  if (
+    details.includes("insufficient funds") ||
+    details.includes("exceeds balance") ||
+    details.includes("transfer amount exceeds balance") ||
+    details.includes("insufficient balance")
+  ) {
+    return `No tienes saldo suficiente de ${tokenLabel} o CELO para el gas.`;
+  }
+
+  if (details.includes("wallet") && details.includes("connect")) {
+    return "Conecta una wallet compatible para continuar.";
+  }
+
+  if (details.includes("chain") || details.includes("network")) {
+    return "Cambia tu wallet a la red Celo e intenta de nuevo.";
+  }
+
+  if (details.includes("supabase") || details.includes("no la guardo")) {
+    return "Pago confirmado, pero no pudimos actualizar el proyecto. Refresca en unos segundos.";
+  }
+
+  if (details.includes("execution reverted") || details.includes("transferfailed")) {
+    return `No pudimos transferir ${tokenLabel}. Revisa tu saldo y vuelve a intentar.`;
+  }
+
+  return "No pudimos completar la contribución. Revisa tu wallet e intenta de nuevo.";
 }
 
 function getYouTubeEmbedUrl(url: string) {
@@ -207,6 +262,8 @@ function validateCreatorForm(form: CreatorForm) {
 }
 
 function mapCampaignRow(row: CampaignRow): Campaign {
+  const amountUnits = getCreatorAmountUnits(row);
+
   return {
     id: row.id,
     name: row.name,
@@ -215,7 +272,8 @@ function mapCampaignRow(row: CampaignRow): Campaign {
     emoji: row.emoji,
     description: row.description,
     story: row.story,
-    amount: formatAmount(row.amount_cents / 100),
+    amountUnits,
+    amount: formatAmount(amountUnits),
     contributions: row.contribution_count,
     video: getYouTubeEmbedUrl(row.video_url ?? ""),
     wallet: row.wallet_address,
@@ -231,7 +289,7 @@ export default function ProjectsPage() {
   const [isCreatingCampaign, setIsCreatingCampaign] = useState(false);
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [selectedAmount, setSelectedAmount] = useState(0.1);
-  const [selectedToken, setSelectedToken] = useState<ContributionToken>("CELO");
+  const [selectedToken, setSelectedToken] = useState<ContributionToken>("USDT");
   const [paymentError, setPaymentError] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
   const [isPaying, setIsPaying] = useState(false);
@@ -261,12 +319,12 @@ export default function ProjectsPage() {
     [campaigns, activeCampaignId],
   );
 
-  const selectedContributionText = `${selectedAmount} ${selectedToken === "CELO" ? "CELO" : "COPm"}`;
+  const selectedContributionText = `${selectedAmount} ${selectedToken === "COPM" ? "COPm" : "USDT"}`;
   const selectedSplit = getContributionSplit(selectedAmount);
 
   function resetAmountSelector() {
     setSelectedAmount(0.1);
-    setSelectedToken("CELO");
+    setSelectedToken("USDT");
     setPaymentError("");
     setPaymentStatus("");
   }
@@ -403,26 +461,32 @@ export default function ProjectsPage() {
     setPaymentStatus("");
 
     if (!window.ethereum) {
-      setPaymentError("No se detectó una wallet compatible");
+      setPaymentError("Conecta una wallet compatible para continuar.");
       return;
     }
 
     if (!contractAddress || !isAddress(contractAddress)) {
-      setPaymentError("Falta configurar NEXT_PUBLIC_ANICCA_CONTRIBUTIONS_ADDRESS");
+      setPaymentError("El sistema de pagos aún no está configurado.");
       return;
     }
 
     if (!activeCampaign.wallet || !isAddress(activeCampaign.wallet)) {
-      setPaymentError("La wallet del proyecto no es una dirección válida");
+      setPaymentError("Este proyecto no tiene una wallet válida para recibir aportes.");
       return;
     }
 
-    if (selectedToken === "COPM" && (!copmTokenAddress || !isAddress(copmTokenAddress))) {
-      setPaymentError("Falta configurar NEXT_PUBLIC_COPM_TOKEN_ADDRESS");
+    const selectedTokenAddress =
+      selectedToken === "COPM" ? copmTokenAddress : usdtTokenAddress;
+    const selectedTokenDecimals =
+      selectedToken === "COPM" ? copmDecimals : usdtDecimals;
+    const selectedTokenLabel = selectedToken === "COPM" ? "COPm" : "USDT";
+
+    if (!selectedTokenAddress || !isAddress(selectedTokenAddress)) {
+      setPaymentError(
+        `${selectedTokenLabel} aún no está configurado para recibir aportes.`,
+      );
       return;
     }
-
-    const validCopmTokenAddress = copmTokenAddress ?? "";
 
     setIsPaying(true);
 
@@ -443,33 +507,21 @@ export default function ProjectsPage() {
 
       let txHash = "";
 
-      if (selectedToken === "CELO") {
-        const tx = await contract.contributeCelo(
-          campaignHash,
-          activeCampaign.wallet,
-          { value: parseEther(String(selectedAmount)) },
-        );
-        setPaymentStatus("Esperando confirmación en Celo");
-        const receipt = await tx.wait();
-        txHash = receipt?.hash ?? tx.hash;
-      } else {
-        const amount = parseUnits(String(selectedAmount), copmDecimals);
-        const copm = new Contract(validCopmTokenAddress, erc20ApprovalAbi, signer);
+      const amount = parseUnits(String(selectedAmount), selectedTokenDecimals);
+      const token = new Contract(selectedTokenAddress, erc20ApprovalAbi, signer);
 
-        setPaymentStatus("Aprueba el uso de COPm en tu wallet");
-        const approvalTx = await copm.approve(contractAddress, amount);
-        await approvalTx.wait();
+      setPaymentStatus(`Aprueba el uso de ${selectedTokenLabel} en tu wallet`);
+      const approvalTx = await token.approve(contractAddress, amount);
+      await approvalTx.wait();
 
-        setPaymentStatus("Confirma la contribución en COPm");
-        const tx = await contract.contributeCopm(
-          campaignHash,
-          activeCampaign.wallet,
-          amount,
-        );
-        setPaymentStatus("Esperando confirmación en Celo");
-        const receipt = await tx.wait();
-        txHash = receipt?.hash ?? tx.hash;
-      }
+      setPaymentStatus(`Confirma la contribución en ${selectedTokenLabel}`);
+      const tx =
+        selectedToken === "COPM"
+          ? await contract.contributeCopm(campaignHash, activeCampaign.wallet, amount)
+          : await contract.contributeUsdt(campaignHash, activeCampaign.wallet, amount);
+      setPaymentStatus("Esperando confirmación en Celo");
+      const receipt = await tx.wait();
+      txHash = receipt?.hash ?? tx.hash;
 
       await persistContribution({
         campaignId: activeCampaign.id,
@@ -477,15 +529,19 @@ export default function ProjectsPage() {
         recipientWallet: activeCampaign.wallet,
         token: selectedToken,
         amount: String(selectedAmount),
-        ...getContributionSplit(selectedAmount),
+        ...selectedSplit,
         txHash,
       });
+
+      const creatorAmountUnits = Number(selectedSplit.creatorAmount) || 0;
 
       setCampaigns((currentCampaigns) =>
         currentCampaigns.map((campaign) =>
           campaign.id === activeCampaign.id
             ? {
                 ...campaign,
+                amountUnits: campaign.amountUnits + creatorAmountUnits,
+                amount: formatAmount(campaign.amountUnits + creatorAmountUnits),
                 contributions: campaign.contributions + 1,
               }
             : campaign,
@@ -493,12 +549,7 @@ export default function ProjectsPage() {
       );
       setPaymentStatus("Contribución confirmada");
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "No se pudo completar la contribución";
-
-      setPaymentError(message);
+      setPaymentError(getPaymentErrorMessage(error, selectedTokenLabel));
     } finally {
       setIsPaying(false);
     }
@@ -536,6 +587,7 @@ export default function ProjectsPage() {
         description: description || "Proyecto en construcción.",
         story,
         amount_cents: 0,
+        creator_amount_units: 0,
         contribution_count: 0,
         video_url: getYouTubeEmbedUrl(form.video),
         wallet_address: wallet,
@@ -602,6 +654,18 @@ export default function ProjectsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!paymentError) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setPaymentError("");
+    }, 5000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [paymentError]);
+
   async function loadMore() {
     setIsLoadingMore(true);
     await loadCampaigns(page + 1);
@@ -610,6 +674,12 @@ export default function ProjectsPage() {
 
   return (
     <div className="app-shell">
+      {paymentError ? (
+        <div className="toast-notice error" role="alert">
+          {paymentError}
+        </div>
+      ) : null}
+
       <header className="top-bar">
         <Link className="icon-link" href="/" aria-label="Volver al inicio">
           <ArrowLeft className="nav-icon" aria-hidden="true" />
@@ -844,10 +914,10 @@ export default function ProjectsPage() {
 
             <div className="token-toggle" aria-label="Seleccionar moneda">
               <button
-                className={`token-option${selectedToken === "CELO" ? " active" : ""}`}
-                onClick={() => setSelectedToken("CELO")}
+                className={`token-option${selectedToken === "USDT" ? " active" : ""}`}
+                onClick={() => setSelectedToken("USDT")}
               >
-                CELO
+                USDT
               </button>
               <button
                 className={`token-option${selectedToken === "COPM" ? " active" : ""}`}
@@ -888,9 +958,15 @@ export default function ProjectsPage() {
               </span>
             </p>
 
-            {paymentStatus ? <p className="status-message">{paymentStatus}</p> : null}
-            {paymentError ? <p className="form-error">{paymentError}</p> : null}
-
+            {paymentStatus ? (
+              <p
+                className={`payment-notice ${
+                  paymentStatus.includes("confirmada") ? "success" : "info"
+                }`}
+              >
+                {paymentStatus}
+              </p>
+            ) : null}
             <button className="full-pay-btn" onClick={contribute} disabled={isPaying}>
               {isPaying
                 ? "Procesando..."
