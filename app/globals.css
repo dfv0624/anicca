@@ -651,15 +651,15 @@ button {
 .payment-notice.error {
   border-color: rgba(255, 120, 79, 0.35);
   background: rgba(255, 120, 79, 0.12);
-  color: var(--orange-light);
+  color: var(--white);
 }
 
 .toast-notice {
   position: fixed;
   top: 22px;
-  right: 22px;
-  z-index: 80;
-  width: min(340px, calc(100vw - 32px));
+  left: 50%;
+  z-index: 1100;
+  width: min(390px, calc(100vw - 32px));
   padding: 12px 14px;
   border: 1px solid rgba(255, 120, 79, 0.36);
   border-radius: 8px;
@@ -669,18 +669,20 @@ button {
   font-size: 13px;
   font-weight: 700;
   line-height: 1.45;
+  text-align: left;
+  transform: translateX(-50%);
   animation: toast-in 180ms ease-out;
 }
 
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translate(-50%, -8px);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate(-50%, 0);
   }
 }
 
@@ -937,9 +939,23 @@ button {
   }
 
   .toast-notice {
-    top: 14px;
-    right: 14px;
+    top: auto;
+    bottom: calc(18px + env(safe-area-inset-bottom));
     left: 14px;
+    transform: none;
     width: auto;
+    animation-name: toast-in-mobile;
+  }
+
+  @keyframes toast-in-mobile {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 }
