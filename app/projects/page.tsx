@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, Search } from "lucide-react";
+import { ArrowLeft, Info, Pencil, Search } from "lucide-react";
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import {
   BrowserProvider,
@@ -293,6 +293,7 @@ export default function ProjectsPage() {
   const [paymentError, setPaymentError] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
   const [isPaying, setIsPaying] = useState(false);
+  const [isWalletEditable, setIsWalletEditable] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -340,6 +341,40 @@ export default function ProjectsPage() {
 
   function closeCampaign() {
     setActiveCampaignId(null);
+  }
+
+  async function fillCreatorWalletFromProvider() {
+    if (!window.ethereum) {
+      setIsWalletEditable(true);
+      setFormError("Conecta una wallet o escribe la dirección manualmente.");
+      return;
+    }
+
+    try {
+      const accounts = await window.ethereum.request({
+        method: "eth_requestAccounts",
+      });
+      const walletAddress = Array.isArray(accounts) ? String(accounts[0] ?? "") : "";
+
+      if (!isAddress(walletAddress)) {
+        setIsWalletEditable(true);
+        setFormError("No pudimos leer una wallet válida.");
+        return;
+      }
+
+      setForm((current) => ({ ...current, wallet: walletAddress }));
+      setIsWalletEditable(false);
+      setFormError("");
+    } catch {
+      setIsWalletEditable(true);
+      setFormError("No pudimos tomar la wallet automáticamente.");
+    }
+  }
+
+  function openCreatorModal() {
+    setIsCreatorModalOpen(true);
+    setIsWalletEditable(false);
+    void fillCreatorWalletFromProvider();
   }
 
   function changeCustomAmount(delta: number) {
@@ -696,7 +731,7 @@ export default function ProjectsPage() {
             />
           </Link>
         </div>
-        <button className="top-action" onClick={() => setIsCreatorModalOpen(true)}>
+        <button className="top-action" onClick={openCreatorModal}>
           Crear
         </button>
       </header>
@@ -823,8 +858,15 @@ export default function ProjectsPage() {
             onChange={(event) => updateForm("description", event.target.value)}
           />
 
-          <label className="field-label" htmlFor="projectsCreatorEmoji">
+          <label className="field-label wallet-label" htmlFor="projectsCreatorEmoji">
             Emoji
+            <span
+              className="tooltip-trigger"
+              aria-label="Este símbolo aparecerá como avatar del proyecto en las tarjetas."
+              tabIndex={0}
+            >
+              <Info className="tooltip-icon" aria-hidden="true" />
+            </span>
           </label>
           <input
             id="projectsCreatorEmoji"
@@ -845,18 +887,36 @@ export default function ProjectsPage() {
             onChange={(event) => updateForm("video", event.target.value)}
           />
 
-          <label className="field-label" htmlFor="projectsCreatorWallet">
+          <label className="field-label wallet-label" htmlFor="projectsCreatorWallet">
             Wallet
+            <span
+              className="tooltip-trigger"
+              aria-label="Se tomará la dirección pública conectada para recibir los aportes del proyecto."
+              tabIndex={0}
+            >
+              <Info className="tooltip-icon" aria-hidden="true" />
+            </span>
           </label>
-          <input
-            id="projectsCreatorWallet"
-            required
-            maxLength={creatorLimits.walletLength}
-            spellCheck={false}
-            placeholder="Wallet"
-            value={form.wallet}
-            onChange={(event) => updateForm("wallet", event.target.value)}
-          />
+          <div className="wallet-input-wrap">
+            <button
+              className="wallet-edit-btn"
+              type="button"
+              aria-label="Editar wallet manualmente"
+              onClick={() => setIsWalletEditable(true)}
+            >
+              <Pencil className="wallet-edit-icon" aria-hidden="true" />
+            </button>
+            <input
+              id="projectsCreatorWallet"
+              required
+              maxLength={creatorLimits.walletLength}
+              readOnly={!isWalletEditable}
+              spellCheck={false}
+              placeholder="Conecta tu wallet"
+              value={form.wallet}
+              onChange={(event) => updateForm("wallet", event.target.value)}
+            />
+          </div>
 
           {formError ? <p className="form-error">{formError}</p> : null}
 

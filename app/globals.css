@@ -591,6 +591,80 @@ button {
   font-weight: 600;
 }
 
+.wallet-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wallet-input-wrap {
+  position: relative;
+}
+
+.tooltip-trigger {
+  position: relative;
+  display: inline-flex;
+  color: var(--text);
+  cursor: help;
+}
+
+.tooltip-trigger::after {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  z-index: 2;
+  width: min(280px, calc(100vw - 48px));
+  max-width: 280px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: var(--card-hover);
+  color: var(--white);
+  content: attr(aria-label);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  white-space: normal;
+  transform: translateX(-18%) translateY(-4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.tooltip-trigger:hover::after,
+.tooltip-trigger:focus::after {
+  opacity: 1;
+  transform: translateX(-18%) translateY(0);
+}
+
+.tooltip-icon,
+.wallet-edit-icon {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.2;
+}
+
+.wallet-edit-btn {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  background: var(--card-hover);
+  color: var(--white);
+  transform: translateY(-50%);
+}
+
+.wallet-edit-btn:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
 .modal-content input,
 .modal-content textarea {
   width: 100%;
@@ -601,6 +675,15 @@ button {
   background: var(--card-hover);
   color: var(--white);
   font-size: 14px;
+}
+
+.modal-content input[readonly] {
+  color: var(--text);
+  cursor: default;
+}
+
+.wallet-input-wrap input {
+  padding-right: 52px;
 }
 
 .modal-content input:focus,
